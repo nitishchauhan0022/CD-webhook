@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 
 	"github.com/google/go-github/github"
 	"golang.org/x/oauth2"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"	
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -76,12 +78,13 @@ func (d *Deployer) getResourceClient(ctx context.Context, unstructuredObj *unstr
 	resourceClient := d.Client.Resource(mapping.Resource).Namespace(unstructuredObj.GetNamespace())
 	return resourceClient, nil
 }
-func GetKubernetesClient(ctx context.Context, inCluster bool) (*rest.Config, dynamic.Interface, error) {
+func GetKubernetesClient(ctx context.Context) (*rest.Config, dynamic.Interface, error) {
 	var (
 		config *rest.Config
 		err    error
 	)
-	if inCluster {
+	inCluster := os.Getenv("incluster")
+	if inCluster == "true" {
 		config, err = rest.InClusterConfig()
 		if err != nil {
 			return config, nil, err
@@ -113,7 +116,10 @@ func (d *Deployer) AddedFile(ctx context.Context, resourceFile []byte) error {
 	}
 
 	_, err = resourceClient.Create(ctx, unstructuredObj, metav1.CreateOptions{})
-	if err != nil {
+	if errors.IsAlreadyExists(err) {
+		log.Printf("Resource already exists: %s", unstructuredObj.GetName())
+		d.ModifiedFile(ctx, resourceFile)
+	} else if err != nil {
 		return fmt.Errorf("failed to create resource %s: %w", unstructuredObj.GetName(), err)
 	}
 
@@ -133,9 +139,14 @@ func (d *Deployer) ModifiedFile(ctx context.Context, resourceFile []byte) error 
 
 	_, err = resourceClient.Update(ctx, unstructuredObj, metav1.UpdateOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to update resource %s: %w", unstructuredObj.GetName(), err)
+		if errors.IsNotFound(err) {
+			log.Printf("Resource not found: %s", unstructuredObj.GetName())
+			d.AddedFile(ctx, resourceFile)
+			return nil
+		} else {
+			return fmt.Errorf("failed to update resource %s: %w", unstructuredObj.GetName(), err)
+		}
 	}
-
 	log.Printf("Resource updated: %s", unstructuredObj.GetName())
 	return nil
 }

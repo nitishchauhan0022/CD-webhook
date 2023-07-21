@@ -12,12 +12,10 @@ import (
 )
 
 func main() {
-	err := godotenv.Load(".env")
-	if err != nil {
-		log.Printf("Error loading .env file : %v", err)
-	}
+	_ = godotenv.Load(".env")
+
 	ctx := context.Background()
-	config, client, err := deploy.GetKubernetesClient(ctx, false)
+	config, client, err := deploy.GetKubernetesClient(ctx)
 	if err != nil {
 		log.Printf("Error: %s\n", err)
 		os.Exit(1)

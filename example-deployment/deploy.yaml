@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gitops
+  template:
+    metadata:
+      labels:
+        app: gitops
+    spec:
+      serviceAccountName: gitops-serviceaccount
+      containers:
+      - name: gitops
+        image: nitishchauhan0022/gitops:latest
+        ports:
+        - name: http-port
+          containerPort: 8080
+        imagePullPolicy: Always
+        env:
+          - name: incluster
+            value: "true"
+          - name: GITHUB_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: gitops-secret
+                key: github-token
+                optional: false
+          - name: WEBHOOK_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: gitops-secret
+                key: webhook-secret
+                optional: false
+
